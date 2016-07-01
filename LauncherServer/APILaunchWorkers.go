@@ -2,6 +2,8 @@ package LauncherServer
 
 import (
 	//"fmt"
+	"encoding/base64"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -26,14 +28,26 @@ func (t *LauncherServer) launchWorkersHandler(w http.ResponseWriter, r *http.Req
 			return
 		}
 
-		t.LaunchWorkers(count)
-		log.Println(strconv.Itoa(count) + " workers launched")
+		var CombatServerAddr string
+		var body []byte
+
+		body, err = ioutil.ReadAll(r.Body)
+		log.Println(string(body))
+		if err == nil {
+			CombatServerAddr = string(body)
+			CombatServerAddr = base64.StdEncoding.EncodeToString([]byte(CombatServerAddr))
+			log.Println(CombatServerAddr)
+			t.LaunchWorkers(count, &CombatServerAddr)
+			log.Println(strconv.Itoa(count) + " workers launched")
+		} else {
+			log.Println("error on body reading: " + err.Error())
+		}
 	} else {
 		log.Println(r.RemoteAddr + " Key is not valid.")
 	}
 }
 
-func (t *LauncherServer) LaunchWorkers(CountOfWorkers int) error {
+func (t *LauncherServer) LaunchWorkers(CountOfWorkers int, CombatServerAddr *string) error {
 	os.Setenv("AWS_ACCESS_KEY_ID", t.config.AWS_ACCESS_KEY_ID)
 	os.Setenv("AWS_SECRET_ACCESS_KEY", t.config.AWS_SECRET_ACCESS_KEY)
 
@@ -47,6 +61,7 @@ func (t *LauncherServer) LaunchWorkers(CountOfWorkers int) error {
 		KeyName:                           aws.String(t.config.KeyName),
 		MinCount:                          aws.Int64(int64(CountOfWorkers)),
 		MaxCount:                          aws.Int64(int64(CountOfWorkers)),
+		UserData:                          CombatServerAddr,
 	})
 
 	if err != nil {
@@ -56,6 +71,7 @@ func (t *LauncherServer) LaunchWorkers(CountOfWorkers int) error {
 
 	// set name of instances.
 	for _, curInstance := range runResult.Instances {
+		log.Println("ID: " + *curInstance.InstanceId)
 		_, errtag := svc.CreateTags(&ec2.CreateTagsInput{
 			Resources: []*string{curInstance.InstanceId},
 			Tags: []*ec2.Tag{
